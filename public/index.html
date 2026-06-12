@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GreenCrop — AI Yield Prediction & Leaf Health</title>
+<meta name="description" content="GreenCrop 2.0 — AI crop yield prediction and leaf health analysis. By Sai Kiran Manideep.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2316a34a'/%3E%3Cstop offset='1' stop-color='%2384cc16'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Cpath d='M50 80 C50 80 22 62 22 40 C22 28 32 22 40 26 C46 29 50 36 50 36 C50 36 54 29 60 26 C68 22 78 28 78 40 C78 62 50 80 50 80 Z' fill='white'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#04130a;--bg2:#0a1f12;
+  --green:#22c55e;--lime:#84cc16;--emerald:#10b981;--teal:#14b8a6;--gold:#eab308;--red:#ef4444;--orange:#f97316;
+  --text:#e7f5ec;--muted:#8fb39e;--card:rgba(16,44,28,.62);--border:rgba(134,200,160,.16);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden;}
+::selection{background:var(--green);color:#fff;}
+::-webkit-scrollbar{width:8px;}::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:linear-gradient(var(--green),var(--lime));border-radius:8px;}
+
+#bg3d{position:fixed;inset:0;z-index:0;}
+.orb{position:fixed;border-radius:50%;filter:blur(95px);opacity:.22;pointer-events:none;z-index:0;}
+.orb.a{width:480px;height:480px;background:linear-gradient(90deg,#15803d,#84cc16);top:-110px;left:-120px;animation:dr 11s ease-in-out infinite;}
+.orb.b{width:440px;height:440px;background:linear-gradient(90deg,#0d9488,#22c55e);bottom:-120px;right:-110px;animation:dr 13s ease-in-out infinite reverse;}
+@keyframes dr{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(70px,45px) scale(1.16);}}
+
+main{position:relative;z-index:2;max-width:1020px;margin:0 auto;padding:24px 20px 80px;}
+.top{display:flex;justify-content:space-between;align-items:center;padding:14px 4px;margin-bottom:18px;flex-wrap:wrap;gap:10px;}
+.logo{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:800;}
+.logo .s{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#16a34a,#84cc16);display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 4px 16px rgba(34,197,94,.5);animation:glow 3s ease-in-out infinite;}
+@keyframes glow{0%,100%{box-shadow:0 0 10px rgba(34,197,94,.5);}50%{box-shadow:0 0 26px rgba(132,204,22,.8);}}
+.logo span{background:linear-gradient(90deg,#4ade80,#bef264);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.userchip{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:#86efac;padding:8px 16px;border-radius:50px;font-size:13px;font-weight:700;}
+.btn{padding:12px 24px;border-radius:12px;font-weight:700;font-size:14px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:.3s;text-decoration:none;font-family:inherit;}
+.btn-p{background:linear-gradient(120deg,#16a34a,#84cc16);color:#06270f;box-shadow:0 8px 24px rgba(34,197,94,.4);}
+.btn-p:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(132,204,22,.5);}
+.btn-g{background:rgba(134,200,160,.1);border:1px solid var(--border);color:var(--text);}
+.btn-g:hover{border-color:var(--green);transform:translateY(-2px);}
+.btn-sm{padding:9px 16px;font-size:12.5px;border-radius:10px;}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none!important;}
+.acts{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:22px;padding:34px;backdrop-filter:blur(12px);box-shadow:0 24px 60px rgba(0,0,0,.5);animation:up .5s both;transform-style:preserve-3d;}
+@keyframes up{from{opacity:0;transform:translateY(26px);}to{opacity:1;transform:none;}}
+h1{font-size:clamp(24px,3.4vw,34px);font-weight:900;}
+h2{font-size:21px;margin-bottom:6px;}
+.grad{background:linear-gradient(90deg,#4ade80,#bef264,#2dd4bf,#4ade80);background-size:300%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:gs 6s linear infinite;}
+@keyframes gs{to{background-position:300% center;}}
+.sub{color:var(--muted);font-size:14px;line-height:1.65;}
+label{display:block;font-size:12px;font-weight:700;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin:16px 0 7px;}
+input,select{width:100%;background:rgba(4,19,10,.65);border:1px solid var(--border);border-radius:12px;padding:13px 16px;color:var(--text);font-size:15px;outline:none;transition:.3s;font-family:inherit;}
+input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(34,197,94,.16);}
+.hint{font-size:12px;color:var(--muted);margin-top:6px;}
+.hint.bad{color:#fca5a5;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+@media(max-width:680px){.row2,.row3{grid-template-columns:1fr;}}
+.tabs{display:flex;background:rgba(4,19,10,.55);border:1px solid var(--border);border-radius:13px;padding:5px;margin-bottom:24px;}
+.tab{flex:1;text-align:center;padding:11px;border-radius:9px;font-weight:700;font-size:14px;cursor:pointer;color:var(--muted);transition:.3s;}
+.tab.on{background:linear-gradient(120deg,#16a34a,#84cc16);color:#06270f;}
+.hide{display:none!important;}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#0a1f12;border:1px solid rgba(34,197,94,.5);color:var(--text);padding:13px 22px;border-radius:13px;font-size:14px;font-weight:600;z-index:9999;transition:.4s;box-shadow:0 14px 40px rgba(0,0,0,.6);}
+.toast.show{transform:translateX(-50%) translateY(0);}
+
+/* feature tiles */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:24px;}
+@media(max-width:680px){.tiles{grid-template-columns:1fr;}}
+.tile{background:linear-gradient(150deg,rgba(22,101,52,.35),rgba(10,31,18,.6));border:1px solid var(--border);border-radius:20px;padding:28px;cursor:pointer;transition:transform .35s,box-shadow .35s,border-color .35s;position:relative;overflow:hidden;}
+.tile::after{content:'';position:absolute;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(132,204,22,.25),transparent 70%);top:-60px;right:-60px;opacity:0;transition:.4s;}
+.tile:hover{transform:translateY(-8px) rotateX(4deg);border-color:rgba(132,204,22,.5);box-shadow:0 24px 56px rgba(34,197,94,.25);}
+.tile:hover::after{opacity:1;}
+.tile .tic{width:52px;height:52px;border-radius:15px;background:linear-gradient(135deg,#16a34a,#84cc16);display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:16px;box-shadow:0 8px 22px rgba(34,197,94,.4);}
+.tile h3{font-size:17px;margin-bottom:8px;}
+.tile p{color:var(--muted);font-size:13px;line-height:1.65;}
+
+/* gauge */
+.gauge{width:190px;height:190px;position:relative;margin:0 auto;}
+.gauge svg{transform:rotate(-90deg);}
+.gauge .n{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.gauge .n b{font-size:38px;font-weight:900;}
+.gauge .n i{font-style:normal;font-size:13px;color:var(--muted);}
+.gauge .n span{font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-top:3px;}
+.verdict{text-align:center;font-size:19px;font-weight:900;margin:16px 0 4px;}
+.fbars{margin-top:22px;}
+.fbar{margin-bottom:13px;}
+.fbar .l{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:5px;}
+.fbar .l b{color:var(--text);}
+.fbar .b{height:8px;background:rgba(134,200,160,.12);border-radius:8px;overflow:hidden;}
+.fbar .b i{display:block;height:100%;width:0;background:linear-gradient(90deg,#16a34a,#84cc16);border-radius:8px;transition:width 1.2s cubic-bezier(.2,.7,.3,1);}
+.statrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:13px;margin:22px 0;}
+.st{background:rgba(134,200,160,.06);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center;}
+.st b{font-size:21px;font-weight:900;display:block;color:#bef264;}
+.st span{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+
+/* leaf scan */
+.uz{border:2px dashed var(--border);border-radius:16px;padding:26px;text-align:center;cursor:pointer;transition:.3s;}
+.uz:hover{border-color:var(--green);background:rgba(34,197,94,.05);}
+.uz.has{border-style:solid;border-color:rgba(132,204,22,.55);}
+.uz img{max-width:100%;max-height:240px;border-radius:10px;}
+.uz .ph{font-size:36px;margin-bottom:8px;}
+.uz p{color:var(--muted);font-size:13px;}
+.uz p b{color:var(--text);}
+.scanline-wrap{position:relative;display:inline-block;border-radius:10px;overflow:hidden;}
+.scanline-wrap.scanning::after{content:'';position:absolute;left:0;right:0;height:4px;background:linear-gradient(90deg,transparent,#bef264,transparent);box-shadow:0 0 18px #84cc16;animation:scanY 1.6s ease-in-out infinite;}
+@keyframes scanY{0%,100%{top:4%;}50%{top:92%;}}
+.hitem{display:flex;align-items:center;gap:14px;background:rgba(134,200,160,.05);border:1px solid var(--border);border-radius:15px;padding:15px 17px;margin-bottom:11px;transition:.3s;}
+.hitem:hover{border-color:rgba(34,197,94,.45);transform:translateX(4px);}
+.hitem .hsc{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;flex:none;}
+.hitem .tx{flex:1;}
+.hitem .tx b{display:block;font-size:14px;}
+.hitem .tx span{font-size:11.5px;color:var(--muted);}
+.empty{text-align:center;padding:36px 20px;color:var(--muted);}
+.empty .e{font-size:42px;margin-bottom:10px;}
+.navrow{display:flex;justify-content:space-between;gap:14px;margin-top:26px;flex-wrap:wrap;}
+.foot{text-align:center;color:var(--muted);font-size:12.5px;margin-top:34px;}
+.foot a{color:#4ade80;font-weight:700;text-decoration:none;}
+.checkbox-row{display:flex;align-items:center;gap:10px;margin-top:16px;background:rgba(4,19,10,.5);border:1px solid var(--border);border-radius:12px;padding:13px 16px;cursor:pointer;}
+.checkbox-row input{width:18px;height:18px;accent-color:#22c55e;}
+.note{background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.3);border-radius:13px;padding:12px 15px;font-size:12px;color:#fde68a;line-height:1.6;margin-top:18px;}
+</style>
+</head>
+<body>
+<canvas id="bg3d"></canvas>
+<div class="orb a"></div><div class="orb b"></div>
+<main>
+  <div class="top">
+    <div class="logo"><span class="s">🌾</span>Green<span>Crop</span></div>
+    <div class="acts">
+      <span class="userchip hide" id="userChip"></span>
+      <button class="btn btn-g btn-sm hide" id="logoutBtn">Logout</button>
+    </div>
+  </div>
+
+  <!-- AUTH -->
+  <section id="scr-auth" class="card hide" style="max-width:460px;margin:30px auto;">
+    <h1>Welcome to <span class="grad">GreenCrop</span> 🌱</h1>
+    <p class="sub" style="margin-top:8px;">AI-powered crop yield prediction & leaf health analysis. Your farm data, from any device.</p>
+    <div class="tabs" style="margin-top:24px;">
+      <div class="tab on" id="tabLogin">Login</div>
+      <div class="tab" id="tabReg">Create Account</div>
+    </div>
+    <div id="formLogin">
+      <label>Email</label><input type="email" id="liEmail" placeholder="you@example.com">
+      <label>Password</label><input type="password" id="liPass" placeholder="••••••••">
+      <p class="hint bad hide" id="liErr"></p>
+      <button class="btn btn-p" style="width:100%;justify-content:center;margin-top:22px;" id="loginBtn">🔓 Login</button>
+    </div>
+    <div id="formReg" class="hide">
+      <label>Full Name</label><input type="text" id="rgName" placeholder="Your name">
+      <label>Email</label><input type="email" id="rgEmail" placeholder="you@example.com">
+      <label>Password</label><input type="password" id="rgPass" placeholder="min 6 characters">
+      <p class="hint bad hide" id="rgErr"></p>
+      <button class="btn btn-p" style="width:100%;justify-content:center;margin-top:22px;" id="regBtn">✨ Create Account</button>
+    </div>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section id="scr-dash" class="card hide">
+    <h2 id="dashHello">Hello 👋</h2>
+    <p class="sub">What would you like to do today?</p>
+    <div class="tiles">
+      <div class="tile" id="tilePredict">
+        <div class="tic">📈</div>
+        <h3>Predict Crop Yield</h3>
+        <p>Enter crop, soil, weather & farm inputs — the regression model estimates yield in tonnes/hectare with factor breakdown.</p>
+      </div>
+      <div class="tile" id="tileScan">
+        <div class="tic">🍃</div>
+        <h3>Leaf Health Scan</h3>
+        <p>Upload a leaf photo — pixel-level color analysis estimates plant health and flags possible disease stress.</p>
+      </div>
+    </div>
+    <h2 style="font-size:16px;margin:30px 0 4px;">📜 Recent Activity</h2>
+    <div id="histList" style="margin-top:14px;"></div>
+  </section>
+
+  <!-- PREDICT -->
+  <section id="scr-predict" class="card hide">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <div><h2>📈 Yield Prediction</h2><p class="sub">Fill your farm details — all factors are weighed by the model.</p></div>
+      <button class="btn btn-g btn-sm" id="backDash1">← Dashboard</button>
+    </div>
+    <div class="row3">
+      <div><label>Crop</label><select id="pCrop">
+        <option>RICE</option><option>WHEAT</option><option>MAIZE</option><option>COTTON</option><option>SUGARCANE</option><option>GROUNDNUT</option></select></div>
+      <div><label>Region Type</label><select id="pRegion">
+        <option>PLAINS</option><option>COASTAL</option><option>DELTA</option><option>PLATEAU</option><option>HILLY</option><option>ARID</option></select></div>
+      <div><label>Soil Type</label><select id="pSoil">
+        <option>ALLUVIAL</option><option>LOAMY</option><option>BLACK</option><option>RED</option><option>CLAY</option><option>LATERITE</option><option>SANDY</option></select></div>
+    </div>
+    <div class="row2">
+      <div><label>Farm Area (hectares)</label><input type="number" id="pArea" value="2" min="0.05" step="0.1"></div>
+      <div><label>Annual Rainfall (mm)</label><input type="number" id="pRain" value="1100" min="0" step="10"></div>
+    </div>
+    <div class="row2">
+      <div><label>Avg Temperature (°C)</label><input type="number" id="pTemp" value="27" min="-5" max="55" step="0.5"></div>
+      <div><label>Fertilizer Used (kg/ha)</label><input type="number" id="pFert" value="120" min="0" step="5"></div>
+    </div>
+    <label class="checkbox-row"><input type="checkbox" id="pIrr" checked> Irrigation available 💧</label>
+    <p class="hint bad hide" id="pErr"></p>
+    <div class="navrow"><span></span><button class="btn btn-p" id="predictBtn">🌾 Predict Yield</button></div>
+
+    <div id="pResult" class="hide" style="margin-top:30px;border-top:1px solid var(--border);padding-top:28px;">
+      <div class="gauge">
+        <svg width="190" height="190">
+          <circle cx="95" cy="95" r="80" stroke="rgba(134,200,160,.13)" stroke-width="14" fill="none"/>
+          <circle id="gArc" cx="95" cy="95" r="80" stroke="#22c55e" stroke-width="14" fill="none" stroke-linecap="round" stroke-dasharray="502.7" stroke-dashoffset="502.7"/>
+        </svg>
+        <div class="n"><b id="gNum">0</b><i>t / ha</i><span id="gGrade"></span></div>
+      </div>
+      <div class="verdict" id="pVerdict"></div>
+      <div class="statrow">
+        <div class="st"><b id="sTotal">–</b><span>Total Harvest (t)</span></div>
+        <div class="st"><b id="sArea">–</b><span>Area (ha)</span></div>
+        <div class="st"><b id="sCrop">–</b><span>Crop</span></div>
+      </div>
+      <h2 style="font-size:15px;">Factor Impact</h2>
+      <div class="fbars" id="fBars"></div>
+      <div class="note">📌 Estimates come from a deterministic regression model with per-crop coefficients (temperature/rainfall response curves, soil & region multipliers, fertilizer saturation). Use as guidance, not guarantee.</div>
+    </div>
+  </section>
+
+  <!-- LEAF SCAN -->
+  <section id="scr-scan" class="card hide">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <div><h2>🍃 Leaf Health Scan</h2><p class="sub">Upload a clear photo of a single leaf on plain background for best results.</p></div>
+      <button class="btn btn-g btn-sm" id="backDash2">← Dashboard</button>
+    </div>
+    <div class="row2" style="margin-top:14px;">
+      <div>
+        <label>Leaf Photo</label>
+        <div class="uz" id="leafZone"><div class="ph">🍃</div><p><b>Click to upload</b> a leaf photo</p></div>
+        <input type="file" id="leafFile" accept="image/*" class="hide">
+        <label>Crop (optional)</label>
+        <input type="text" id="scanCrop" placeholder="e.g. Rice, Tomato…">
+        <button class="btn btn-p" style="width:100%;justify-content:center;margin-top:18px;" id="scanBtn" disabled>🔬 Analyse Leaf</button>
+      </div>
+      <div id="scanResult">
+        <div class="empty"><div class="e">🔬</div>Upload a leaf photo and hit Analyse —<br>results appear here.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot">GreenCrop 2.0 · built by <a href="https://manideep-2006.github.io/my-portfolio/" target="_blank">Sai Kiran Manideep</a> · <a href="https://github.com/MANIDEEP-2006/green-crop-yield-detection" target="_blank">source</a></div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const show=el=>el.classList.remove('hide'),hide=el=>el.classList.add('hide');
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
+async function api(p,o={}){const r=await fetch(p,{headers:{'Content-Type':'application/json'},credentials:'same-origin',...o});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'HTTP '+r.status);return d;}
+let ME=null;
+
+/* ===== 3D particle field — floating leaves/fireflies ===== */
+const cv=$('bg3d'),ctx=cv.getContext('2d');
+let W,H,parts=[],FOV=300,mX=0,mY=0;
+function rs(){W=cv.width=innerWidth;H=cv.height=innerHeight;}
+rs();addEventListener('resize',rs);
+addEventListener('mousemove',e=>{mX=(e.clientX/W-.5)*2;mY=(e.clientY/H-.5)*2;});
+const N=Math.min(110,Math.floor(innerWidth/11));
+for(let i=0;i<N;i++)parts.push({x:(Math.random()-.5)*W*1.5,y:(Math.random()-.5)*H*1.5,z:Math.random()*900+60,vz:.35+Math.random()*.7,h:100+Math.random()*60});
+(function dr(){
+  ctx.clearRect(0,0,W,H);
+  const pts=[];
+  for(const p of parts){
+    p.z-=p.vz;
+    if(p.z<40){p.z=960;p.x=(Math.random()-.5)*W*1.5;p.y=(Math.random()-.5)*H*1.5;}
+    const s=FOV/p.z, sx=W/2+(p.x+mX*180)*s*.9, sy=H/2+(p.y+mY*180)*s*.9;
+    if(sx<-60||sx>W+60||sy<-60||sy>H+60)continue;
+    const r=Math.max(.4,2.4*s),a=Math.min(.8,1.2-p.z/900);
+    ctx.beginPath();ctx.arc(sx,sy,r,0,7);
+    ctx.fillStyle=`hsla(${p.h},80%,60%,${a})`;
+    ctx.shadowColor=`hsla(${p.h},80%,55%,.8)`;ctx.shadowBlur=6*s;
+    ctx.fill();ctx.shadowBlur=0;
+    pts.push({sx,sy});
+  }
+  for(let i=0;i<pts.length;i++)for(let j=i+1;j<pts.length;j++){
+    const dx=pts[i].sx-pts[j].sx,dy=pts[i].sy-pts[j].sy,d=dx*dx+dy*dy;
+    if(d<9500){ctx.beginPath();ctx.moveTo(pts[i].sx,pts[i].sy);ctx.lineTo(pts[j].sx,pts[j].sy);
+      ctx.strokeStyle=`rgba(74,222,128,${.12*(1-d/9500)})`;ctx.lineWidth=.7;ctx.stroke();}
+  }
+  requestAnimationFrame(dr);
+})();
+
+/* ===== 3D tilt on cards ===== */
+document.querySelectorAll('.card').forEach(c=>{
+  c.addEventListener('mousemove',e=>{
+    if(innerWidth<700)return;
+    const r=c.getBoundingClientRect();
+    const px=(e.clientX-r.left)/r.width,py=(e.clientY-r.top)/r.height;
+    c.style.transform=`rotateY(${(px-.5)*3}deg) rotateX(${(.5-py)*2.4}deg)`;
+  });
+  c.addEventListener('mouseleave',()=>c.style.transform='');
+});
+
+/* ===== auth ===== */
+$('tabLogin').onclick=()=>{$('tabLogin').classList.add('on');$('tabReg').classList.remove('on');show($('formLogin'));hide($('formReg'));};
+$('tabReg').onclick=()=>{$('tabReg').classList.add('on');$('tabLogin').classList.remove('on');show($('formReg'));hide($('formLogin'));};
+$('regBtn').onclick=async()=>{
+  const err=$('rgErr');hide(err);$('regBtn').disabled=true;
+  try{const d=await api('/api/register',{method:'POST',body:JSON.stringify({name:$('rgName').value,email:$('rgEmail').value,password:$('rgPass').value})});
+    ME=d.user;toast('🎉 Account created!');route();}catch(e){err.textContent=e.message;show(err);}
+  $('regBtn').disabled=false;};
+$('loginBtn').onclick=async()=>{
+  const err=$('liErr');hide(err);$('loginBtn').disabled=true;
+  try{const d=await api('/api/login',{method:'POST',body:JSON.stringify({email:$('liEmail').value,password:$('liPass').value})});
+    ME=d.user;toast('🔓 Welcome back!');route();}catch(e){err.textContent=e.message;show(err);}
+  $('loginBtn').disabled=false;};
+$('logoutBtn').onclick=async()=>{await api('/api/logout',{method:'POST'});ME=null;route();};
+
+async function route(){
+  ['scr-auth','scr-dash','scr-predict','scr-scan'].forEach(i=>hide($(i)));
+  if(!ME){try{ME=(await api('/api/me')).user;}catch(e){}}
+  if(!ME){hide($('userChip'));hide($('logoutBtn'));show($('scr-auth'));return;}
+  $('userChip').textContent='👤 '+ME.name.split(' ')[0];show($('userChip'));show($('logoutBtn'));
+  await renderHistory();show($('scr-dash'));
+}
+async function renderHistory(){
+  $('dashHello').textContent='Hello, '+ME.name.split(' ')[0]+' 👋';
+  const L=$('histList');
+  try{
+    const [p,s]=await Promise.all([api('/api/predictions'),api('/api/scans')]);
+    const items=[
+      ...p.predictions.map(x=>({t:new Date(x.created_at),html:`<div class="hitem"><div class="hsc" style="background:rgba(34,197,94,.13);border:2px solid #22c55e;color:#86efac;">${x.yield_t_ha}</div><div class="tx"><b>📈 ${x.crop} yield — ${x.yield_t_ha} t/ha (${x.grade})</b><span>${x.area_ha} ha · ${x.region} · ${x.soil} soil · total ${x.total_t} t · ${new Date(x.created_at).toLocaleString()}</span></div></div>`})),
+      ...s.scans.map(x=>{const c=x.health_pct>=70?'#22c55e':x.health_pct>=45?'#eab308':'#ef4444';
+        return {t:new Date(x.created_at),html:`<div class="hitem"><div class="hsc" style="background:${c}22;border:2px solid ${c};color:${c};">${x.health_pct}%</div><div class="tx"><b>🍃 Leaf scan — ${x.verdict}</b><span>${x.crop||'crop n/a'} · ${x.detail||''} · ${new Date(x.created_at).toLocaleString()}</span></div></div>`}})
+    ].sort((a,b)=>b.t-a.t).slice(0,12);
+    L.innerHTML=items.length?items.map(i=>i.html).join(''):'<div class="empty"><div class="e">🌱</div>No activity yet — run your first prediction or leaf scan!</div>';
+  }catch(e){L.innerHTML='<div class="empty">⚠ '+e.message+'</div>';}
+}
+$('tilePredict').onclick=()=>{hide($('scr-dash'));show($('scr-predict'));};
+$('tileScan').onclick=()=>{hide($('scr-dash'));show($('scr-scan'));};
+$('backDash1').onclick=async()=>{await renderHistory();hide($('scr-predict'));show($('scr-dash'));};
+$('backDash2').onclick=async()=>{await renderHistory();hide($('scr-scan'));show($('scr-dash'));};
+
+/* ===== predict ===== */
+$('predictBtn').onclick=async()=>{
+  const err=$('pErr');hide(err);
+  const b=$('predictBtn');b.disabled=true;b.textContent='Crunching…';
+  try{
+    const d=await api('/api/predict',{method:'POST',body:JSON.stringify({
+      crop:$('pCrop').value,region:$('pRegion').value,soil:$('pSoil').value,
+      area_ha:$('pArea').value,rainfall_mm:$('pRain').value,temperature_c:$('pTemp').value,
+      fertilizer_kg:$('pFert').value,irrigated:$('pIrr').checked})});
+    show($('pResult'));
+    const col=d.grade==='EXCELLENT'?'#22c55e':d.grade==='GOOD'?'#84cc16':d.grade==='MODERATE'?'#eab308':'#ef4444';
+    const maxY={RICE:6,WHEAT:5,MAIZE:9,COTTON:3,SUGARCANE:100,GROUNDNUT:3}[d.input.crop]||8;
+    const pct=Math.min(1,d.yield_t_ha/maxY);
+    const arc=$('gArc');arc.style.stroke=col;
+    arc.style.transition='none';arc.style.strokeDashoffset=502.7;
+    setTimeout(()=>{arc.style.transition='stroke-dashoffset 1.6s cubic-bezier(.2,.7,.3,1)';arc.style.strokeDashoffset=502.7*(1-pct);},80);
+    const t0=performance.now();
+    (function tk(t){const p=Math.min(1,(t-t0)/1600);$('gNum').textContent=(d.yield_t_ha*(1-Math.pow(1-p,3))).toFixed(2);$('gNum').style.color=col;if(p<1)requestAnimationFrame(tk);})(t0);
+    $('gGrade').textContent=d.grade;$('gGrade').style.color=col;
+    $('pVerdict').textContent={EXCELLENT:'🌟 Excellent conditions — yields above baseline!',GOOD:'✅ Good conditions — healthy expected yield.',MODERATE:'⚠️ Moderate — some factors are limiting yield.',POOR:'❌ Poor conditions — significant yield stress.'}[d.grade];
+    $('pVerdict').style.color=col;
+    $('sTotal').textContent=d.total_t;$('sArea').textContent=d.input.area_ha;$('sCrop').textContent=d.input.crop;
+    const F=d.factors;
+    const rows=[['🌡 Temperature response',F.temperature,1],['🌧 Rainfall response',F.rainfall,1],['🟤 Soil multiplier',F.soil,1.15],['🗺 Region multiplier',F.region,1.15],['🧪 Fertilizer boost (t/ha)',F.fertilizer,1.5],['💧 Irrigation boost (t/ha)',F.irrigation,1]];
+    $('fBars').innerHTML=rows.map(([l,v,m])=>`<div class="fbar"><div class="l"><span>${l}</span><b>${v}</b></div><div class="b"><i data-w="${Math.min(100,v/m*100)}%"></i></div></div>`).join('');
+    setTimeout(()=>$('fBars').querySelectorAll('i').forEach(i=>i.style.width=i.dataset.w),100);
+    $('pResult').scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){err.textContent=e.message;show(err);}
+  b.disabled=false;b.textContent='🌾 Predict Yield';
+};
+
+/* ===== leaf scan (client-side pixel analysis) ===== */
+let leafImg=null;
+$('leafZone').onclick=()=>$('leafFile').click();
+$('leafFile').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{leafImg=r.result;
+    $('leafZone').innerHTML='<div class="scanline-wrap" id="slw"><img src="'+r.result+'"></div>';
+    $('leafZone').classList.add('has');$('scanBtn').disabled=false;};
+  r.readAsDataURL(f);
+};
+$('scanBtn').onclick=async()=>{
+  const b=$('scanBtn');b.disabled=true;b.textContent='Analysing…';
+  document.getElementById('slw')?.classList.add('scanning');
+  await new Promise(r=>setTimeout(r,1400));
+  const img=new Image();
+  img.onload=async()=>{
+    const c=document.createElement('canvas');const S=140;c.width=c.height=S;
+    const x=c.getContext('2d');x.drawImage(img,0,0,S,S);
+    const d=x.getImageData(0,0,S,S).data;
+    let green=0,yellow=0,brown=0,dark=0,total=0;
+    for(let i=0;i<d.length;i+=4){
+      const R=d[i],G=d[i+1],B=d[i+2];
+      const mx=Math.max(R,G,B),mn=Math.min(R,G,B);
+      if(mx<35){dark++;continue;}
+      if(mx-mn<18&&mx>180)continue; /* white background */
+      total++;
+      if(G>R*1.12&&G>B*1.12)green++;
+      else if(R>120&&G>90&&B<90)yellow++;
+      else if(R>70&&R>G*1.15&&B<R*.8)brown++;
+    }
+    const T=Math.max(1,total);
+    const gp=green/T,yp=yellow/T,bp=brown/T;
+    let health=Math.round(Math.max(5,Math.min(98,gp*100-yp*35-bp*55+8)));
+    let verdict,detail,col;
+    if(health>=70){verdict='HEALTHY 🌿';detail=`Strong chlorophyll signal — ${Math.round(gp*100)}% healthy green tissue.`;col='#22c55e';}
+    else if(health>=45){verdict='MILD STRESS ⚠️';detail=`Yellowing detected (${Math.round(yp*100)}%) — possible nutrient deficiency or early disease. Monitor & check nitrogen.`;col='#eab308';}
+    else{verdict='UNHEALTHY ❌';detail=`Significant browning/yellowing (${Math.round((yp+bp)*100)}%) — likely disease or severe stress. Inspect for leaf spot/blight; consider neem or copper-based treatment.`;col='#ef4444';}
+    const CIRC=2*Math.PI*60;
+    $('scanResult').innerHTML=`
+      <div style="text-align:center;">
+        <div class="gauge" style="width:150px;height:150px;">
+          <svg width="150" height="150">
+            <circle cx="75" cy="75" r="60" stroke="rgba(134,200,160,.13)" stroke-width="12" fill="none"/>
+            <circle id="hArc" cx="75" cy="75" r="60" stroke="${col}" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="${CIRC}" stroke-dashoffset="${CIRC}"/>
+          </svg>
+          <div class="n"><b id="hNum" style="font-size:30px;color:${col}">0</b><span>Health</span></div>
+        </div>
+        <div class="verdict" style="color:${col};font-size:17px;">${verdict}</div>
+        <p class="sub" style="margin-top:6px;">${detail}</p>
+        <div class="statrow" style="margin-top:18px;">
+          <div class="st"><b>${Math.round(gp*100)}%</b><span>Green</span></div>
+          <div class="st"><b>${Math.round(yp*100)}%</b><span>Yellow</span></div>
+          <div class="st"><b>${Math.round(bp*100)}%</b><span>Brown</span></div>
+        </div>
+      </div>`;
+    setTimeout(()=>{
+      const a=document.getElementById('hArc');
+      a.style.transition='stroke-dashoffset 1.4s cubic-bezier(.2,.7,.3,1)';
+      a.style.strokeDashoffset=CIRC*(1-health/100);
+      const n=document.getElementById('hNum'),t0=performance.now();
+      (function tk(t){const p=Math.min(1,(t-t0)/1400);n.textContent=Math.round(health*(1-Math.pow(1-p,3)))+'%';if(p<1)requestAnimationFrame(tk);})(t0);
+    },100);
+    try{await api('/api/scans',{method:'POST',body:JSON.stringify({crop:$('scanCrop').value,healthPct:health,verdict:verdict.replace(/[^A-Z ]/g,'').trim(),detail})});toast('🍃 Scan saved');}catch(e){}
+    document.getElementById('slw')?.classList.remove('scanning');
+    b.disabled=false;b.textContent='🔬 Analyse Leaf';
+  };
+  img.src=leafImg;
+};
+
+route();
+</script>
+</body>
+</html>

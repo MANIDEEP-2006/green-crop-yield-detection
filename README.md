@@ -1,3 +1,9 @@
+# 🌾 GreenCrop 2.0 — AI Yield Prediction & Leaf Health (3D Web App)
+
+> 🚀 **Full-stack product:** Express + PostgreSQL + JWT auth · 3D animated UI · regression yield model · client-side leaf health analysis
+> Deploy on Render: set `DATABASE_URL`, `JWT_SECRET`, `ADMIN_EMAIL` env vars · Build `npm install` · Start `npm start`
+> Old prototype preserved in [`legacy/`](legacy/)
+
 # 🌾 GreenCrop — Crop Yield Prediction System
 
 An **end-to-end machine learning pipeline** that predicts crop yields from real agricultural data,

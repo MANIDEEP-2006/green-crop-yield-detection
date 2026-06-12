@@ -1,172 +1,194 @@
-const express = require('express');
-const cors = require('cors');
-const sqlite3 = require('sqlite3').verbose();
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+/* ============================================================
+   GreenCrop 2.0 — Product Server
+   Express + PostgreSQL + JWT auth + yield prediction API
+   Author: Bonugu Sai Kiran Manideep
+   ============================================================ */
+const express = require("express");
+const path = require("path");
+const cookieParser = require("cookie-parser");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const { Pool } = require("pg");
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || "manideep1716@gmail.com").toLowerCase();
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, '.')));  // Serve static files
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes("localhost")
+    ? false : { rejectUnauthorized: false },
+});
 
-// Setup Multer for uploads
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const dir = './uploads';
-        if (!fs.existsSync(dir)){
-            fs.mkdirSync(dir);
-        }
-        cb(null, dir);
+async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS gc_users (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      pass_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'user',
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS gc_predictions (
+      id SERIAL PRIMARY KEY,
+      user_id INT REFERENCES gc_users(id) ON DELETE CASCADE,
+      crop TEXT NOT NULL,
+      region TEXT NOT NULL,
+      soil TEXT NOT NULL,
+      area_ha REAL NOT NULL,
+      rainfall_mm REAL NOT NULL,
+      temperature_c REAL NOT NULL,
+      fertilizer_kg REAL NOT NULL,
+      irrigated BOOLEAN NOT NULL,
+      yield_t_ha REAL NOT NULL,
+      total_t REAL NOT NULL,
+      grade TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS gc_scans (
+      id SERIAL PRIMARY KEY,
+      user_id INT REFERENCES gc_users(id) ON DELETE CASCADE,
+      crop TEXT,
+      health_pct INT NOT NULL,
+      verdict TEXT NOT NULL,
+      detail TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+  `);
+  await pool.query(`UPDATE gc_users SET role='admin' WHERE email=$1`, [ADMIN_EMAIL]);
+  console.log("✅ GreenCrop database ready");
+}
+
+app.use(express.json({ limit: "300kb" }));
+app.use(cookieParser());
+app.use(express.static(path.join(__dirname, "public")));
+
+const cookieOpts = { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 7 * 24 * 3600 * 1000 };
+const sign = u => jwt.sign({ id: u.id, email: u.email, name: u.name, role: u.role }, JWT_SECRET, { expiresIn: "7d" });
+function auth(req, res, next) {
+  const t = req.cookies.gc_token;
+  if (!t) return res.status(401).json({ error: "Not logged in" });
+  try { req.user = jwt.verify(t, JWT_SECRET); next(); }
+  catch { res.status(401).json({ error: "Session expired" }); }
+}
+
+/* ---------- auth ---------- */
+app.post("/api/register", async (req, res) => {
+  try {
+    let { name, email, password } = req.body || {};
+    name = (name || "").trim(); email = (email || "").trim().toLowerCase();
+    if (name.length < 3) return res.status(400).json({ error: "Enter your full name" });
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: "Enter a valid email" });
+    if (!password || password.length < 6) return res.status(400).json({ error: "Password min 6 characters" });
+    const hash = await bcrypt.hash(password, 10);
+    const role = email === ADMIN_EMAIL ? "admin" : "user";
+    const r = await pool.query(
+      `INSERT INTO gc_users(name,email,pass_hash,role) VALUES($1,$2,$3,$4) RETURNING id,name,email,role`,
+      [name, email, hash, role]);
+    res.cookie("gc_token", sign(r.rows[0]), cookieOpts);
+    res.json({ ok: true, user: r.rows[0] });
+  } catch (e) {
+    if (e.code === "23505") return res.status(400).json({ error: "Account exists — please login" });
+    console.error(e); res.status(500).json({ error: "Server error" });
+  }
+});
+app.post("/api/login", async (req, res) => {
+  try {
+    const email = (req.body.email || "").trim().toLowerCase();
+    const r = await pool.query(`SELECT * FROM gc_users WHERE email=$1`, [email]);
+    const u = r.rows[0];
+    if (!u || !(await bcrypt.compare(req.body.password || "", u.pass_hash)))
+      return res.status(401).json({ error: "Invalid email or password" });
+    res.cookie("gc_token", sign(u), cookieOpts);
+    res.json({ ok: true, user: { id: u.id, name: u.name, email: u.email, role: u.role } });
+  } catch (e) { console.error(e); res.status(500).json({ error: "Server error" }); }
+});
+app.post("/api/logout", (req, res) => { res.clearCookie("gc_token"); res.json({ ok: true }); });
+app.get("/api/me", auth, (req, res) => res.json({ user: req.user }));
+
+/* ---------- yield prediction model ----------
+   Regression-style model with per-crop coefficients derived from
+   public agricultural yield ranges (t/ha). Deterministic & explainable. */
+const CROPS = {
+  RICE:      { base: 3.8, optT: 27, tSens: 0.045, optR: 1400, rSens: 0.00055, fMax: 0.9,  fHalf: 110, irr: 0.55 },
+  WHEAT:     { base: 3.2, optT: 21, tSens: 0.055, optR: 650,  rSens: 0.00075, fMax: 0.85, fHalf: 100, irr: 0.50 },
+  MAIZE:     { base: 5.5, optT: 25, tSens: 0.050, optR: 800,  rSens: 0.00065, fMax: 1.2,  fHalf: 130, irr: 0.60 },
+  COTTON:    { base: 1.7, optT: 28, tSens: 0.040, optR: 750,  rSens: 0.00060, fMax: 0.45, fHalf: 90,  irr: 0.30 },
+  SUGARCANE: { base: 70,  optT: 28, tSens: 0.030, optR: 1600, rSens: 0.00045, fMax: 14,   fHalf: 180, irr: 9.0  },
+  GROUNDNUT: { base: 1.6, optT: 26, tSens: 0.045, optR: 700,  rSens: 0.00070, fMax: 0.5,  fHalf: 80,  irr: 0.35 },
+};
+const SOIL = { ALLUVIAL: 1.08, BLACK: 1.05, RED: 0.95, LATERITE: 0.88, SANDY: 0.82, CLAY: 0.97, LOAMY: 1.10 };
+const REGION = { COASTAL: 1.04, DELTA: 1.08, PLATEAU: 0.94, PLAINS: 1.0, HILLY: 0.88, ARID: 0.82 };
+
+function predictYield(p) {
+  const c = CROPS[p.crop];
+  const tempF = Math.exp(-c.tSens * Math.pow(p.temperature_c - c.optT, 2) / 10);
+  const rainF = Math.exp(-c.rSens * Math.pow(p.rainfall_mm - c.optR, 2) / 1000);
+  const fertF = (c.fMax * p.fertilizer_kg) / (c.fHalf + p.fertilizer_kg);
+  const irrB  = p.irrigated ? c.irr : 0;
+  const soilF = SOIL[p.soil] ?? 1.0;
+  const regF  = REGION[p.region] ?? 1.0;
+  let y = (c.base * tempF * rainF * soilF * regF) + fertF + irrB;
+  y = Math.max(0.1, +y.toFixed(2));
+  const pct = y / c.base;
+  const grade = pct >= 1.05 ? "EXCELLENT" : pct >= 0.85 ? "GOOD" : pct >= 0.6 ? "MODERATE" : "POOR";
+  return {
+    yield_t_ha: y, total_t: +(y * p.area_ha).toFixed(2), grade,
+    factors: {
+      temperature: +tempF.toFixed(2), rainfall: +rainF.toFixed(2),
+      soil: soilF, region: regF, fertilizer: +fertF.toFixed(2), irrigation: irrB,
     },
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + path.extname(file.originalname));
-    }
-});
-const upload = multer({ storage: storage });
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+  };
+}
 
-// Database setup
-const db = new sqlite3.Database('./database.sqlite', (err) => {
-    if (err) {
-        console.error('Error opening database', err);
-    } else {
-        console.log('Connected to the SQLite database.');
-        
-        // Create Users table
-        db.run(`CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            password TEXT
-        )`);
-
-        // Create Crops table
-        db.run(`CREATE TABLE IF NOT EXISTS crops (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            name TEXT,
-            plant_date TEXT,
-            FOREIGN KEY(user_id) REFERENCES users(id)
-        )`);
-
-        // Create Photos table
-        db.run(`CREATE TABLE IF NOT EXISTS photos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            crop_id INTEGER,
-            photo_url TEXT,
-            FOREIGN KEY(crop_id) REFERENCES crops(id) ON DELETE CASCADE
-        )`);
-    }
+app.post("/api/predict", auth, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const p = {
+      crop: String(b.crop || "").toUpperCase(), region: String(b.region || "").toUpperCase(),
+      soil: String(b.soil || "").toUpperCase(), area_ha: +b.area_ha,
+      rainfall_mm: +b.rainfall_mm, temperature_c: +b.temperature_c,
+      fertilizer_kg: +b.fertilizer_kg, irrigated: !!b.irrigated,
+    };
+    if (!CROPS[p.crop]) return res.status(400).json({ error: "Pick a crop" });
+    if (!SOIL[p.soil]) return res.status(400).json({ error: "Pick a soil type" });
+    if (!REGION[p.region]) return res.status(400).json({ error: "Pick a region" });
+    for (const [k, lo, hi] of [["area_ha", 0.05, 10000], ["rainfall_mm", 0, 5000], ["temperature_c", -5, 55], ["fertilizer_kg", 0, 1000]])
+      if (!(p[k] >= lo && p[k] <= hi)) return res.status(400).json({ error: `Invalid ${k.replace("_", " ")}` });
+    const out = predictYield(p);
+    await pool.query(
+      `INSERT INTO gc_predictions(user_id,crop,region,soil,area_ha,rainfall_mm,temperature_c,fertilizer_kg,irrigated,yield_t_ha,total_t,grade)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [req.user.id, p.crop, p.region, p.soil, p.area_ha, p.rainfall_mm, p.temperature_c, p.fertilizer_kg, p.irrigated, out.yield_t_ha, out.total_t, out.grade]);
+    res.json({ ok: true, ...out, input: p });
+  } catch (e) { console.error(e); res.status(500).json({ error: "Server error" }); }
 });
 
-// Enable foreign keys
-db.run('PRAGMA foreign_keys = ON');
-
-// Serve index.html at root
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+app.get("/api/predictions", auth, async (req, res) => {
+  const r = await pool.query(`SELECT * FROM gc_predictions WHERE user_id=$1 ORDER BY id DESC LIMIT 30`, [req.user.id]);
+  res.json({ predictions: r.rows });
 });
 
-// --- AUTHENTICATION API ---
-app.post('/api/register', (req, res) => {
-    const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
-
-    db.run('INSERT INTO users (username, password) VALUES (?, ?)', [username, password], function(err) {
-        if (err) {
-            if (err.message.includes('UNIQUE')) {
-                return res.status(400).json({ error: 'Username already exists' });
-            }
-            return res.status(500).json({ error: 'Database error' });
-        }
-        res.status(201).json({ message: 'User created successfully', userId: this.lastID });
-    });
+/* ---------- leaf scan history (analysis runs client-side) ---------- */
+app.post("/api/scans", auth, async (req, res) => {
+  try {
+    const { crop, healthPct, verdict, detail } = req.body || {};
+    const hp = Math.max(0, Math.min(100, parseInt(healthPct) || 0));
+    await pool.query(`INSERT INTO gc_scans(user_id,crop,health_pct,verdict,detail) VALUES($1,$2,$3,$4,$5)`,
+      [req.user.id, String(crop || "").slice(0, 40), hp, String(verdict || "").slice(0, 60), String(detail || "").slice(0, 400)]);
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: "Server error" }); }
+});
+app.get("/api/scans", auth, async (req, res) => {
+  const r = await pool.query(`SELECT * FROM gc_scans WHERE user_id=$1 ORDER BY id DESC LIMIT 30`, [req.user.id]);
+  res.json({ scans: r.rows });
 });
 
-app.post('/api/login', (req, res) => {
-    const { username, password } = req.body;
-    db.get('SELECT * FROM users WHERE username = ? AND password = ?', [username, password], (err, row) => {
-        if (err) return res.status(500).json({ error: 'Database error' });
-        if (!row) return res.status(401).json({ error: 'Invalid username or password' });
-        
-        res.json({ message: 'Login successful', userId: row.id, username: row.username });
-    });
-});
+app.get("/health", (req, res) => res.json({ ok: true }));
 
-// --- CROPS API ---
-app.get('/api/crops', (req, res) => {
-    const { userId } = req.query;
-    if (!userId) return res.status(400).json({ error: 'User ID is required' });
-
-    db.all('SELECT * FROM crops WHERE user_id = ? ORDER BY id DESC', [userId], (err, crops) => {
-        if (err) return res.status(500).json({ error: 'Database error' });
-        
-        // Fetch photos for these crops
-        const cropIds = crops.map(c => c.id);
-        if (cropIds.length === 0) return res.json({ crops: [] });
-
-        const placeholders = cropIds.map(() => '?').join(',');
-        db.all(`SELECT * FROM photos WHERE crop_id IN (${placeholders})`, cropIds, (err, photos) => {
-            if (err) return res.status(500).json({ error: 'Database error while fetching photos' });
-
-            const cropsWithPhotos = crops.map(crop => {
-                return {
-                    ...crop,
-                    photos: photos.filter(p => p.crop_id === crop.id).map(p => p.photo_url)
-                };
-            });
-            res.json({ crops: cropsWithPhotos });
-        });
-    });
-});
-
-app.post('/api/crops', (req, res) => {
-    const { userId, name, date } = req.body;
-    if (!userId || !name || !date) return res.status(400).json({ error: 'Missing fields' });
-
-    db.run('INSERT INTO crops (user_id, name, plant_date) VALUES (?, ?, ?)', [userId, name, date], function(err) {
-        if (err) return res.status(500).json({ error: 'Database error' });
-        res.status(201).json({ message: 'Crop added', cropId: this.lastID });
-    });
-});
-
-app.delete('/api/crops/:id', (req, res) => {
-    const cropId = req.params.id;
-    db.run('DELETE FROM crops WHERE id = ?', [cropId], function(err) {
-        if (err) return res.status(500).json({ error: 'Database error' });
-        res.json({ message: 'Crop deleted successfully' });
-    });
-});
-
-app.post('/api/crops/:id/photo', upload.single('photo'), (req, res) => {
-    const cropId = req.params.id;
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-
-    const photoUrl = `/uploads/${req.file.filename}`;
-
-    db.run('INSERT INTO photos (crop_id, photo_url) VALUES (?, ?)', [cropId, photoUrl], function(err) {
-        if (err) return res.status(500).json({ error: 'Database error' });
-        res.json({ message: 'Photo uploaded', photoUrl });
-    });
-});
-
-// --- DISEASE DETECTION (Mock) ---
-app.post('/api/disease-detect', upload.single('image'), (req, res) => {
-    const { problemText } = req.body;
-    
-    // Simulate AI Processing delay
-    setTimeout(() => {
-        res.json({
-            disease: 'Leaf Spot',
-            note: 'Leaf spot is a descriptive term applied to foliage diseases caused primarily by pathogenic fungi and bacteria. Symptoms typically include brownish, blackish, or yellow spots on the leaves. If ignored, the spots can merge, leading to premature leaf drop, severely stunted growth, and weakened overall plant health.',
-            cure: '• Prune and destroy heavily infected leaves immediately to prevent further spread.\n• Ensure proper spacing between plants to improve air circulation and sunlight exposure.\n• Avoid overhead watering; water at the base of the plant to keep the foliage dry.\n• Apply organic fungicidal treatments like Neem oil or Copper-based sprays during the early stages of infection.'
-        });
-    }, 2000);
-});
-
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
+initDb()
+  .then(() => app.listen(PORT, () => console.log(`🌾 GreenCrop running on :${PORT}`)))
+  .catch(e => { console.error("DB init failed:", e.message); process.exit(1); });
